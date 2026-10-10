@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"os"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -127,5 +128,30 @@ func TestScore(t *testing.T) {
 	_, g := score([]Finding{{Status: Pass, Weight: 10}, {Status: Fail, Weight: 10}})
 	if g != "D" {
 		t.Errorf("50 %% devrait donner D, obtenu %s", g)
+	}
+}
+
+func TestHTMLReport(t *testing.T) {
+	r := scanServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+	})
+	path := t.TempDir() + "/rapport.html"
+	if err := writeHTML(path, r); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{r.Grade, "Content-Security-Policy", "nosniff"} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("le rapport ne contient pas %q", want)
+		}
+	}
+}
+
+func TestGradeRank(t *testing.T) {
+	if gradeRank("A+") <= gradeRank("A") || gradeRank("B") <= gradeRank("C") || gradeRank("Z") != -1 {
+		t.Error("ordre des notes incorrect")
 	}
 }
