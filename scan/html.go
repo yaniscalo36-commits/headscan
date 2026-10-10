@@ -1,4 +1,4 @@
-package main
+package scan
 
 import (
 	"embed"
@@ -52,8 +52,8 @@ var reportTmpl = template.Must(template.New("report.html").Funcs(template.FuncMa
 	"join": strings.Join,
 }).ParseFS(templateFS, "templates/report.html"))
 
-// writeHTML génère un rapport HTML autonome (un seul fichier, sans dépendance).
-func writeHTML(path string, r *Result) error {
+// WriteHTML génère un rapport HTML autonome (un seul fichier, sans dépendance).
+func WriteHTML(path string, r *Result) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
