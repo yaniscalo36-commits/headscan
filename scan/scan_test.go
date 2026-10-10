@@ -150,3 +150,22 @@ func TestHTMLReport(t *testing.T) {
 	}
 }
 
+
+func TestInvalidCertificateIsReportedNotFatal(t *testing.T) {
+	// Client sans le certificat du serveur de test : la vérification échoue (autorité inconnue).
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+	}))
+	defer srv.Close()
+	r, err := (&Scanner{Client: &http.Client{}}).Scan(srv.URL)
+	if err != nil {
+		t.Fatalf("un certificat invalide ne doit pas empêcher l'analyse : %v", err)
+	}
+	f := find(t, r, "Certificat valide")
+	if f.Status != Fail || !strings.Contains(f.Detail, "auto-signé") {
+		t.Fatalf("certificat invalide mal signalé : %+v", f)
+	}
+	if find(t, r, "X-Content-Type-Options").Status != Pass {
+		t.Fatal("les en-têtes doivent quand même être analysés")
+	}
+}
