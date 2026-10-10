@@ -3,9 +3,11 @@ package scan
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -130,7 +132,13 @@ func (s *Scanner) Scan(target string) (*Result, error) {
 		return nil, err
 	}
 
-	resp, chain, err := s.get(u.String(), true)
+	resp, chain, err := s.getRetry(u.String(), true)
+	var certErr error
+	if err != nil && isCertError(err) {
+		// Certificat invalide : on analyse quand même le site, et l'erreur devient un constat d'échec.
+		certErr = err
+		resp, chain, err = s.insecure().getRetry(u.String(), true)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("connexion impossible à %s : %w", u, err)
 	}
@@ -155,7 +163,7 @@ func (s *Scanner) Scan(target string) (*Result, error) {
 		}
 	}
 
-	r.Findings = append(r.Findings, checkTransport(resp, isHTTPS)...)
+	r.Findings = append(r.Findings, checkTransport(resp, isHTTPS, certErr)...)
 	if s.CheckHTTPRedirect && isHTTPS {
 		r.Findings = append(r.Findings, s.checkHTTPRedirect(resp.Request.URL))
 	}
@@ -168,6 +176,73 @@ func (s *Scanner) Scan(target string) (*Result, error) {
 	return r, nil
 }
 
+// getRetry relance la requête (2 fois au plus) quand la connexion est coupée par le serveur :
+// certains sites ferment aléatoirement des connexions. Les délais dépassés ne sont pas relancés
+// pour garder un temps d'analyse borné, ni les erreurs définitives (DNS, certificat, cible interdite).
+func (s *Scanner) getRetry(u string, follow bool) (*http.Response, []string, error) {
+	var (
+		resp  *http.Response
+		chain []string
+		err   error
+	)
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt) * 300 * time.Millisecond)
+		}
+		resp, chain, err = s.get(u, follow)
+		if err == nil || !isTransient(err) {
+			return resp, chain, err
+		}
+	}
+	return resp, chain, err
+}
+
+func isTransient(err error) bool {
+	if errors.Is(err, ErrBlockedTarget) || isCertError(err) {
+		return false
+	}
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return false
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return false
+	}
+	var opErr *net.OpError
+	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.As(err, &opErr)
+}
+
+// isCertError indique si la connexion a échoué à cause du certificat du site
+// (expiré, auto-signé, autorité inconnue, nom qui ne correspond pas).
+func isCertError(err error) bool {
+	var verr *tls.CertificateVerificationError
+	var unknown x509.UnknownAuthorityError
+	var invalid x509.CertificateInvalidError
+	var host x509.HostnameError
+	return errors.As(err, &verr) || errors.As(err, &unknown) || errors.As(err, &invalid) || errors.As(err, &host)
+}
+
+// insecure renvoie une copie du scanner qui accepte les certificats invalides,
+// en gardant tout le reste (notamment le dialer anti-SSRF du mode sécurisé).
+func (s *Scanner) insecure() *Scanner {
+	var tr *http.Transport
+	if t, ok := s.Client.Transport.(*http.Transport); ok && t != nil {
+		tr = t.Clone()
+	} else {
+		tr = http.DefaultTransport.(*http.Transport).Clone()
+	}
+	if tr.TLSClientConfig == nil {
+		tr.TLSClientConfig = &tls.Config{}
+	}
+	tr.TLSClientConfig.InsecureSkipVerify = true
+	client := *s.Client
+	client.Transport = tr
+	cp := *s
+	cp.Client = &client
+	return &cp
+}
+
 // checkHTTPRedirect vérifie que http://hôte redirige vers https://.
 func (s *Scanner) checkHTTPRedirect(httpsURL *url.URL) Finding {
 	f := Finding{Category: "Transport", Name: "Redirection HTTP → HTTPS", Weight: 10}
@@ -177,7 +252,14 @@ func (s *Scanner) checkHTTPRedirect(httpsURL *url.URL) Finding {
 	plain.Path = "/"
 	plain.RawQuery = ""
 
-	resp, _, err := s.get(plain.String(), false)
+	// Vérification secondaire : délai plafonné à 5 s pour garder une durée d'analyse bornée.
+	quick := *s
+	client := *s.Client
+	if client.Timeout == 0 || client.Timeout > 5*time.Second {
+		client.Timeout = 5 * time.Second
+	}
+	quick.Client = &client
+	resp, _, err := quick.get(plain.String(), false)
 	if err != nil {
 		f.Status, f.Detail = Info, "Le port 80 ne répond pas (HTTP désactivé)."
 		f.Weight = 0

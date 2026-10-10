@@ -2,6 +2,8 @@ package scan
 
 import (
 	"crypto/tls"
+	"crypto/x509"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -14,7 +16,7 @@ const sixMonths = 15552000 // secondes
 
 // ---------- Transport (HTTPS, TLS, certificat) ----------
 
-func checkTransport(resp *http.Response, isHTTPS bool) []Finding {
+func checkTransport(resp *http.Response, isHTTPS bool, certErr error) []Finding {
 	if !isHTTPS {
 		return []Finding{{
 			Category: "Transport", Name: "HTTPS", Status: Fail, Weight: 30,
@@ -24,6 +26,15 @@ func checkTransport(resp *http.Response, isHTTPS bool) []Finding {
 	}
 
 	out := []Finding{{Category: "Transport", Name: "HTTPS", Status: Pass, Detail: "Connexion chiffrée.", Weight: 30}}
+	if certErr != nil {
+		out[0].Status = Warn
+		out[0].Detail = "Connexion chiffrée, mais les navigateurs affichent une alerte de sécurité à cause du certificat."
+		out = append(out, Finding{
+			Category: "Transport", Name: "Certificat valide", Status: Fail, Weight: 25,
+			Detail: describeCertError(certErr),
+			Advice: "Installer un certificat valide pour ce nom de domaine (gratuit avec Let's Encrypt) et automatiser son renouvellement.",
+		})
+	}
 	if resp.TLS == nil {
 		return out
 	}
@@ -57,6 +68,24 @@ func checkTransport(resp *http.Response, isHTTPS bool) []Finding {
 		out = append(out, c)
 	}
 	return out
+}
+
+// describeCertError traduit une erreur de vérification de certificat en explication lisible.
+func describeCertError(err error) string {
+	var unknown x509.UnknownAuthorityError
+	var invalid x509.CertificateInvalidError
+	var host x509.HostnameError
+	switch {
+	case errors.As(err, &host):
+		return "Le certificat ne correspond pas au nom du site (" + host.Host + ")."
+	case errors.As(err, &invalid) && invalid.Reason == x509.Expired:
+		return "Le certificat a expiré ou n'est pas encore valide."
+	case errors.As(err, &invalid):
+		return "Le certificat est invalide : " + invalid.Error()
+	case errors.As(err, &unknown):
+		return "Certificat non reconnu : auto-signé ou émis par une autorité inconnue."
+	}
+	return "Le certificat n'a pas pu être vérifié."
 }
 
 // ---------- En-têtes de sécurité ----------
