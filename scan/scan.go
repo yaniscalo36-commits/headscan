@@ -1,4 +1,5 @@
-package main
+// Package scan contient le moteur d'analyse de headscan : vérifications, score et rapport HTML.
+package scan
 
 import (
 	"crypto/tls"

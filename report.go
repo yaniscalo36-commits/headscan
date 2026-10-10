@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/yaniscalo36-commits/headscan/scan"
 	"io"
 	"strings"
 )
@@ -25,13 +26,13 @@ func (p palette) c(code, s string) string {
 	return code + s + reset
 }
 
-func statusIcon(p palette, s Status) string {
+func statusIcon(p palette, s scan.Status) string {
 	switch s {
-	case Pass:
+	case scan.Pass:
 		return p.c(green, "✔")
-	case Warn:
+	case scan.Warn:
 		return p.c(yellow, "!")
-	case Fail:
+	case scan.Fail:
 		return p.c(red, "✘")
 	}
 	return p.c(cyan, "i")
@@ -48,7 +49,7 @@ func gradeColor(g string) string {
 }
 
 // printText affiche le rapport dans le terminal.
-func printText(w io.Writer, r *Result, color bool) {
+func printText(w io.Writer, r *scan.Result, color bool) {
 	p := palette{on: color}
 
 	fmt.Fprintf(w, "\n%s %s\n", p.c(bold, "headscan →"), r.FinalURL)

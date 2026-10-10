@@ -23,6 +23,20 @@ En-têtes
 Note : C (66/100)
 ```
 
+## 🔴 Essayer en ligne
+
+**[portfolio-ten-khaki-63.vercel.app/lab/headscan](https://portfolio-ten-khaki-63.vercel.app/lab/headscan/)**
+
+Entrez une URL : le scan est fait par une fonction serverless Go hébergée sur Vercel, avec le même moteur que la ligne de commande (package [`scan`](scan/)). Un service qui scanne des URL à la demande peut être détourné contre des cibles internes. Le mode sécurisé (`scan.NewSafeScanner`) protège contre ces abus :
+
+| Risque | Protection |
+|---|---|
+| **SSRF** : faire scanner `localhost`, le réseau interne ou `169.254.169.254` (métadonnées cloud) | Seules les IP **publiques** sont joignables (`scan.IsPublicIP`). Les plages privées, locales, réservées et NAT64 sont bloquées. |
+| Contournement par redirection ou **DNS rebinding** | Le contrôle est fait **au moment de la connexion** (dialer personnalisé), pas sur l'URL : il s'applique aussi aux redirections et à l'IP réellement contactée. |
+| Scan de services internes | Ports **80 et 443** uniquement, pas de proxy. |
+| Saturation | Délais courts, en-têtes limités à 64 Ko, limite de débit par IP, cache de 5 minutes par URL. |
+| XSS via les en-têtes d'un site malveillant | L'interface affiche les résultats avec `textContent`, jamais comme du HTML. |
+
 ## Cas réel : mon propre portfolio
 
 J'ai d'abord lancé l'outil sur [mon portfolio](https://portfolio-ten-khaki-63.vercel.app). Il a obtenu **C**, à cause de 3 échecs et 2 avertissements : pas de CSP, pas de protection contre le clickjacking, pas de `nosniff`…
@@ -101,11 +115,23 @@ Les tests lancent de vrais serveurs HTTP et HTTPS locaux (`httptest`), configur�
 
 `headscan` envoie **une seule requête GET** (et une sur `http://` pour la redirection), comme un navigateur. Il ne tente aucune attaque. Utilisez-le sur vos propres sites ou sur ceux que vous êtes autorisé à auditer.
 
+## Utilisation comme bibliothèque Go
+
+```go
+import "github.com/yaniscalo36-commits/headscan/scan"
+
+r, err := scan.NewSafeScanner(5 * time.Second).Scan("example.com")
+if err != nil { /* errors.Is(err, scan.ErrBlockedTarget) si la cible est interne */ }
+fmt.Println(r.Grade, r.Score)
+```
+
+`scan.NewScanner` (utilisé par la ligne de commande) autorise les adresses internes, pratique pour auditer un serveur de son réseau local. `scan.NewSafeScanner` est destiné aux services exposés publiquement.
+
 ## Organisation Git
 
 - `main` : version stable
 - `develop` : intégration
-- `feature/scanner`, `feature/reports`, `docs/readme` : une branche par fonctionnalité
+- `feature/scanner`, `feature/reports`, `feature/api`, `docs/readme` : une branche par fonctionnalité
 
 ---
 

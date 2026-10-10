@@ -1,4 +1,4 @@
-package main
+package scan
 
 import (
 	"net/http"
@@ -136,7 +136,7 @@ func TestHTMLReport(t *testing.T) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 	})
 	path := t.TempDir() + "/rapport.html"
-	if err := writeHTML(path, r); err != nil {
+	if err := WriteHTML(path, r); err != nil {
 		t.Fatal(err)
 	}
 	b, err := os.ReadFile(path)
@@ -150,8 +150,3 @@ func TestHTMLReport(t *testing.T) {
 	}
 }
 
-func TestGradeRank(t *testing.T) {
-	if gradeRank("A+") <= gradeRank("A") || gradeRank("B") <= gradeRank("C") || gradeRank("Z") != -1 {
-		t.Error("ordre des notes incorrect")
-	}
-}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/yaniscalo36-commits/headscan/scan"
 	"os"
 	"strings"
 	"time"
@@ -56,7 +57,7 @@ Options :
 		os.Exit(1)
 	}
 
-	r, err := NewScanner(*timeout).Scan(flag.Arg(0))
+	r, err := scan.NewScanner(*timeout).Scan(flag.Arg(0))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Erreur :", err)
 		os.Exit(1)
@@ -72,7 +73,7 @@ Options :
 	}
 
 	if *htmlOut != "" {
-		if err := writeHTML(*htmlOut, r); err != nil {
+		if err := scan.WriteHTML(*htmlOut, r); err != nil {
 			fmt.Fprintln(os.Stderr, "Erreur rapport HTML :", err)
 			os.Exit(1)
 		}
