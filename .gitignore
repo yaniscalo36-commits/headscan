@@ -1,0 +1,11 @@
+# Binaires
+*.exe
+headscan
+/bin/
+
+# Rapports générés
+*.html
+!report.html
+
+.vscode/
+.idea/
