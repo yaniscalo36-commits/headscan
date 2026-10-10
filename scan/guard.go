@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"sort"
 	"time"
 )
 
@@ -63,10 +64,22 @@ func safeDialContext(timeout time.Duration) func(ctx context.Context, network, a
 		if err != nil {
 			return nil, err
 		}
+		// IPv4 d'abord : beaucoup de réseaux (dont des hébergeurs serverless) n'ont pas d'IPv6 sortant.
+		sort.SliceStable(ips, func(i, j int) bool { return ips[i].Unmap().Is4() && !ips[j].Unmap().Is4() })
+
+		var lastErr error
 		for _, ip := range ips {
-			if IsPublicIP(ip) {
-				return dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+			if !IsPublicIP(ip) {
+				continue
 			}
+			conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(ip.Unmap().String(), port))
+			if err == nil {
+				return conn, nil
+			}
+			lastErr = err
+		}
+		if lastErr != nil {
+			return nil, lastErr
 		}
 		return nil, fmt.Errorf("%w (%s)", ErrBlockedTarget, host)
 	}
